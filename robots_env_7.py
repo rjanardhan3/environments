@@ -8,7 +8,7 @@ import gymnasium
 from minigrid.core.constants import COLOR_NAMES
 from minigrid.core.grid import Grid
 from minigrid.core.mission import MissionSpace
-from minigrid.core.world_object import Door, Goal, Key, Wall
+from minigrid.core.world_object import Door, Goal, Key, Wall, Ball
 from minigrid.manual_control import ManualControl
 from minigrid.minigrid_env import MiniGridEnv
 #from minigrid.minigrid_env import MiniGrid-Empty-5x5-v0
@@ -82,7 +82,7 @@ from minigrid.minigrid_env import MiniGridEnv
 class SimpleEnv(MiniGridEnv):
     def __init__(
         self,
-        size=10,
+        size=12,
         agent_start_pos=(1, 1),
         agent_start_dir=0,
         max_steps = None,
@@ -90,12 +90,15 @@ class SimpleEnv(MiniGridEnv):
     ):
         self.agent_start_pos = agent_start_pos
         self.agent_start_dir = agent_start_dir
+        self.width = size
+        self.height = size
         self.direction = 0
         self.key_pos = None
         self.key_picked_up = False
         self.prev_pos = None
         self.door_pos = None
         self.monster_pos = None
+        self.wall_x = 0
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
@@ -130,15 +133,24 @@ class SimpleEnv(MiniGridEnv):
         get_the_x = torch.randint(low=1, high=7, size=(1,)).item()
         get_the_y = torch.randint(low=1, high=7, size=(1,)).item()
 
+        monster_x = torch.randint(low=8, high=10, size=(1,)).item()
+        monster_y = torch.randint(low=1, high=10, size=(1,)).item()
+
+        self.monster_pos = (monster_x, monster_y)
+
 
         # print(key_x)
         # print(get_the_y)
         self.grid.set(key_x, get_the_y, Key(COLOR_NAMES[0]))
 
+        #self.grid.set(monster_x, monster_y, Ball(COLOR_NAMES[0]))
+
         self.key_pos = (key_x, get_the_y)
 
         for i in range(0, height):
             self.grid.set(key_y+key_x, i, Wall())
+
+        self.wall_x = key_y + key_x
 
         self.grid.set(key_x + key_y, get_the_x, Door(COLOR_NAMES[0], is_locked=True))
         self.door_pos = (key_x + key_y, get_the_x)
@@ -181,7 +193,7 @@ class SimpleEnv(MiniGridEnv):
         elif self.direction == 2 and pos[0] == self.key_pos[0] + 1 and pos[1] == self.key_pos[1]:
             self.key_picked_up = True
             self.grid.set(self.key_pos[0], self.key_pos[1], None)
-        elif self.direction == 3 and pos[0] == self.key_pos[0] and pos[1] == self.key_pos + 1:
+        elif self.direction == 3 and pos[0] == self.key_pos[0] and pos[1] == self.key_pos[1] + 1:
             self.key_picked_up = True
             self.grid.set(self.key_pos[0], self.key_pos[1], None)
         else:
@@ -189,6 +201,23 @@ class SimpleEnv(MiniGridEnv):
 
         obj = self.grid.get(self.door_pos[0], self.door_pos[1])
         obj.is_locked = False
+
+    def update_ball_pos(self, pos):
+        if pos[0] == 0 or pos[0] == self.width - 1:
+            return 
+        if pos[1] == 0 or pos[1] == self.height - 1:
+            return 
+
+        if pos[0] == self.wall_x:
+            return 
+        
+        if pos[0] == self.width - 2 and pos[1] == self.height - 2:
+            return 
+
+        self.grid.set(self.monster_pos[0], self.monster_pos[1], None)
+        self.monster_pos = pos
+
+        self.grid.set(pos[0], pos[1], Ball(COLOR_NAMES[0]))
 
     def step(self, action):
         temp = super().step(action)
@@ -203,6 +232,16 @@ class SimpleEnv(MiniGridEnv):
         elif self.direction < 0:
             self.direction += 4
 
+        change = int(torch.randint(low=0, high=4, size=(1,)).item())
+        dx = [0, 0, 1, -1]
+        dy = [1, -1, 0, 0]
+
+        if self.agent_pos[0] == self.monster_pos[0] and self.agent_pos[1] == self.agent_pos[1]:
+            self.reset()
+
+        #curr_change = (dx[change], dy[change])
+        curr_pos = (self.monster_pos[0] + dx[change], self.monster_pos[1] + dy[change])
+        self.update_ball_pos(curr_pos)
 
         # print(action)
         # print(self.agent_pos)

@@ -172,11 +172,11 @@ class SimpleEnv(MiniGridEnv):
 
         self.mission = "grand mission"
 
-    def reset(self):
-        obs = super().reset()
-        self.agent_pos = self.agent_start_pos
-        # self.put_obj(Goal(), self.width - 2, self.height - 2)
-        return obs
+    # def reset(self):
+    #     obs = super().reset()
+    #     self.agent_pos = self.agent_start_pos
+    #     # self.put_obj(Goal(), self.width - 2, self.height - 2)
+    #     return obs
 
     #0 - right
         #1 - down

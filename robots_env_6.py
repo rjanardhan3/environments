@@ -202,13 +202,13 @@ class SimpleEnv(MiniGridEnv):
             self.key_picked_up_three = True
             self.grid.set(self.key_pos_three[0], self.key_pos_three[1], None)
         elif self.direction == 1 and pos[0] == self.key_pos_three[0] and pos[1] == self.key_pos_three[1] - 1:
-            self.key_picked_up = True
+            self.key_picked_up_three = True
             self.grid.set(self.key_pos_three[0], self.key_pos_three[1], None)
         elif self.direction == 2 and pos[0] == self.key_pos_three[0] + 1 and pos[1] == self.key_pos_three[1]:
-            self.key_picked_up = True
+            self.key_picked_up_three = True
             self.grid.set(self.key_pos_three[0], self.key_pos_three[1], None)
         elif self.direction == 3 and pos[0] == self.key_pos_three[0] and pos[1] == self.key_pos_three[1] + 1:
-            self.key_picked_up = True
+            self.key_picked_up_three = True
             self.grid.set(self.key_pos_three[0], self.key_pos_three[1], None)
         else:
             return 
@@ -225,13 +225,13 @@ class SimpleEnv(MiniGridEnv):
             self.key_picked_up_two = True
             self.grid.set(self.key_pos_two[0], self.key_pos_two[1], None)
         elif self.direction == 1 and pos[0] == self.key_pos_two[0] and pos[1] == self.key_pos_two[1] - 1:
-            self.key_picked_up = True
+            self.key_picked_up_two = True
             self.grid.set(self.key_pos_two[0], self.key_pos_two[1], None)
         elif self.direction == 2 and pos[0] == self.key_pos_two[0] + 1 and pos[1] == self.key_pos_two[1]:
-            self.key_picked_up = True
+            self.key_picked_up_two = True
             self.grid.set(self.key_pos_two[0], self.key_pos_two[1], None)
         elif self.direction == 3 and pos[0] == self.key_pos_two[0] and pos[1] == self.key_pos_two[1] + 1:
-            self.key_picked_up = True
+            self.key_picked_up_two = True
             self.grid.set(self.key_pos_two[0], self.key_pos_two[1], None)
         else:
             return 
