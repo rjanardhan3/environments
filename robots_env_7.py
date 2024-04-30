@@ -3,6 +3,7 @@ import torch
 import sys
 import gym
 import gymnasium
+import pickle
 
 
 from minigrid.core.constants import COLOR_NAMES
@@ -79,6 +80,9 @@ from minigrid.minigrid_env import MiniGridEnv
 #             print('done!')
 #             super.resetEnv()
 
+view_new_x = [(0, 1), (-1, 1), (0, -1), (-1, 1)]
+view_new_y = [(-1, 1), (0, 1), (-1, 1), (0, -1)]
+
 class SimpleEnv(MiniGridEnv):
     def __init__(
         self,
@@ -95,9 +99,14 @@ class SimpleEnv(MiniGridEnv):
         self.direction = 0
         self.key_pos = None
         self.key_picked_up = False
+        self.unlocked = False
         self.prev_pos = None
         self.door_pos = None
         self.monster_pos = None
+        self.wall_list = []
+        self.grid_list = []
+        self.size = size
+        self.steps = 0
         self.wall_x = 0
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
@@ -149,6 +158,10 @@ class SimpleEnv(MiniGridEnv):
 
         for i in range(0, height):
             self.grid.set(key_y+key_x, i, Wall())
+            if i == get_the_x:
+                continue 
+
+            self.wall_list.append((key_y + key_x, i))
 
         self.wall_x = key_y + key_x
 
@@ -176,6 +189,78 @@ class SimpleEnv(MiniGridEnv):
     #     obs = super().reset()
     #     self.agent_pos = self.agent_start_pos
     #     return obs
+    #5 is robot position
+
+    def update_grid(self, action):
+        curr_view = torch.zeros((10, 9))
+        curr_view[0][0] = self.agent_pos[0]
+        curr_view[0][1] = self.agent_pos[1]
+        curr_view[0][2] = self.direction
+        update_x = view_new_x[self.direction]
+        update_y = view_new_y[self.direction]
+        #print(self.direction)
+
+        for j in range(9):
+            for k in range(9):
+                temp_update_x = self.agent_pos[0] + update_x[0]*4 + update_x[1]*k
+                temp_update_y = self.agent_pos[1] + update_y[0]*4 + update_y[1]*j
+                temp_pos = (temp_update_x, temp_update_y)
+                #print(temp_pos)
+                # print(j)
+                # print(k)
+                # print("------")
+                if temp_pos[0] <= 0 or temp_pos[0] >= self.size - 1:
+                    curr_view[j + 1][k] = -1
+                    #print(-1)
+                    continue 
+                if temp_pos[1] <= 0 or temp_pos[1] >= self.size - 1:
+                    curr_view[j + 1][k] = -1
+                    #print(-1)
+                    continue 
+
+                if temp_pos in self.wall_list:
+                    #print("asdfasdfasdf")
+                    curr_view[j + 1][k] = 1
+                    #print(1)
+                    continue
+
+                # print(temp_pos)
+                # print(self.key_pos)
+                if temp_pos[0] == self.key_pos[0] and temp_pos[1] == self.key_pos[1] and self.key_picked_up == False:
+                    print("asdpfhawepifhapwiehoaiwehfioawehf")
+                    curr_view[j + 1][k] = 2
+                    #print(2)
+                    continue 
+
+                if temp_pos[0] == self.width - 2 and temp_pos[1] == self.height - 2:
+                    print("asdlfhasoidfhaioshfoidhs THIS IS 3")
+                    curr_view[j + 1][k] = 3
+                    #print(3)
+                    continue 
+
+                if temp_pos[0] == self.door_pos[0] and temp_pos[1] == self.door_pos[1] and self.unlocked == False:
+                    curr_view[j + 1][k] = 4
+                    #print(4)
+                    continue 
+                
+                if temp_pos[0] == self.monster_pos[0] and temp_pos[1] == self.monster_pos[1]:
+                    curr_view[j + 1][k] = 5
+                    continue
+
+                curr_view[j + 1][k] = 0 
+                #print(0)
+
+        if action == self.actions.forward:
+            temp_action = 1
+        elif action == self.actions.right:
+            temp_action = 2
+        else:
+            temp_action = 3
+
+        #print(curr_view)
+        self.grid_list.append({curr_view, temp_action})
+        #print(self.wall_list)
+        return
 
     #0 - right
         #1 - down
@@ -200,6 +285,7 @@ class SimpleEnv(MiniGridEnv):
             return 
 
         obj = self.grid.get(self.door_pos[0], self.door_pos[1])
+        self.unlocked = True
         obj.is_locked = False
 
     def update_ball_pos(self, pos):
@@ -220,8 +306,21 @@ class SimpleEnv(MiniGridEnv):
         self.grid.set(pos[0], pos[1], Ball(COLOR_NAMES[0]))
 
     def step(self, action):
+        self.update_grid(action)
+        self.steps += 1
+        if self.steps >= 75:
+            self.grid_list.append(torch.ones((10, 9))*-10)
+            with open("trajectory_10.pkl", 'wb') as f:
+                pickle.dump(self.grid_list, f)
+            
+            self.reset()
+
         temp = super().step(action)
-        print("-----")
+
+        if self.agent_pos[0] == self.width - 2 and self.agent_pos[1] == self.height - 2:
+            self.grid_list.append(torch.ones((10, 9))*10)
+            with open("trajectory_8.pkl", 'wb') as f:
+                pickle.dump(self.grid_list, f)
         if action == self.actions.left:
             self.direction -= 1
         elif action == self.actions.right:
@@ -235,13 +334,19 @@ class SimpleEnv(MiniGridEnv):
         change = int(torch.randint(low=0, high=4, size=(1,)).item())
         dx = [0, 0, 1, -1]
         dy = [1, -1, 0, 0]
-
-        if self.agent_pos[0] == self.monster_pos[0] and self.agent_pos[1] == self.agent_pos[1]:
+        curr_pos = (self.monster_pos[0] + dx[change], self.monster_pos[1] + dy[change])
+        self.update_ball_pos(curr_pos)
+        if self.agent_pos[0] == self.monster_pos[0] and self.agent_pos[1] == self.monster_pos[1]:
+            print(self.agent_pos)
+            print(self.monster_pos)
+            self.grid_list.append(torch.ones((10, 9))*-10)
+            with open("trajectory_9.pkl", 'wb') as f:
+                pickle.dump(self.grid_list, f)
+            
             self.reset()
 
         #curr_change = (dx[change], dy[change])
-        curr_pos = (self.monster_pos[0] + dx[change], self.monster_pos[1] + dy[change])
-        self.update_ball_pos(curr_pos)
+        
 
         # print(action)
         # print(self.agent_pos)

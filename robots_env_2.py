@@ -3,6 +3,7 @@ import torch
 import sys
 import gym
 import gymnasium
+import pickle
 
 
 from minigrid.core.constants import COLOR_NAMES
@@ -11,6 +12,8 @@ from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import Door, Goal, Key, Wall
 from minigrid.manual_control import ManualControl
 from minigrid.minigrid_env import MiniGridEnv
+view_new_x = [(0, 1), (-1, 1), (0, -1), (-1, 1)]
+view_new_y = [(-1, 1), (0, 1), (-1, 1), (0, -1)]
 
 class SimpleEnv(MiniGridEnv):
     def __init__(
@@ -24,8 +27,11 @@ class SimpleEnv(MiniGridEnv):
         self.agent_start_pos = agent_start_pos
         self.agent_start_dir = agent_start_dir
         self.direction = 0
+        self.size = size
         self.key_pos = None
+        self.steps = 0
         self.key_picked_up = False
+        self.grid_list = []
         self.prev_pos = None
         self.door_pos = None
 
@@ -46,6 +52,45 @@ class SimpleEnv(MiniGridEnv):
     @staticmethod
     def _gen_mission():
         return "grand mission"
+
+    def update_grid(self, action):
+        curr_grid = torch.zeros((7, 6))
+        curr_grid[0][0] = self.agent_pos[0]
+        curr_grid[0][1] = self.agent_pos[1]
+        curr_grid[0][2] = self.direction
+        update_x = view_new_x[self.direction]
+        update_y = view_new_y[self.direction]
+        for j in range(6):
+            for k in range(6):
+                temp_update_x = self.agent_pos[0] + update_x[0]*4 + update_x[1]*k
+                temp_update_y = self.agent_pos[1] + update_y[0]*4 + update_y[1]*j
+                temp_pos = (temp_update_x, temp_update_y)
+
+                if temp_pos[0] <= 0 or temp_pos[0] >= self.size - 1:
+                    curr_grid[j + 1][k] = -1
+                    #print(-1)
+                    continue 
+                if temp_pos[1] <= 0 or temp_pos[1] >= self.size - 1:
+                    curr_grid[j + 1][k] = -1
+                    #print(-1)
+                    continue 
+
+                if temp_pos[0] == self.width - 2 and temp_pos[1] == self.height - 2:
+                    #print("asdlfhasoidfhaioshfoidhs THIS IS 3")
+                    curr_grid[j + 1][k] = 3
+                    #print(3)
+                    continue 
+
+                curr_grid[j + 1][k] = 0
+
+        #print(self.grid_list)
+        if action == self.actions.forward:
+            temp_action = 1
+        elif action == self.actions.right:
+            temp_action = 2
+        else:
+            temp_action = 3
+        self.grid_list.append([curr_grid, temp_action])
 
     def _gen_grid(self, width, height):
         # Create an empty grid
@@ -117,7 +162,23 @@ class SimpleEnv(MiniGridEnv):
         obj.is_locked = False
 
     def step(self, action):
+        self.update_grid(action)
+        self.steps += 1
+        if self.steps >= 50:
+            self.grid_list.append(torch.ones((10, 9))*-10)
+            with open("trajectory_10.pkl", 'wb') as f:
+                pickle.dump(self.grid_list, f)
+            
+            self.reset()
+
         temp = super().step(action)
+
+        if self.agent_pos[0] == self.width - 2 and self.agent_pos[1] == self.height - 2:
+            self.grid_list.append(torch.ones((10, 9))*10)
+            with open("trajectory_8.pkl", 'wb') as f:
+                pickle.dump(self.grid_list, f)
+
+
         if action == self.actions.left:
             self.direction -= 1
         elif action == self.actions.right:
@@ -163,7 +224,7 @@ class SimpleEnv(MiniGridEnv):
                 self.carrying = self.carrying | 1  # Set bit for carrying key
                 self.remove_obj(*self.key_pos)
                 self.key_pos = None
-
+        
         return obs, reward, done, info, _
 
 
