@@ -3,7 +3,7 @@ import torch
 import sys
 import gym
 import gymnasium
-
+import pickle
 
 from minigrid.core.constants import COLOR_NAMES
 from minigrid.core.grid import Grid
@@ -11,6 +11,9 @@ from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import Door, Goal, Key, Wall
 from minigrid.manual_control import ManualControl
 from minigrid.minigrid_env import MiniGridEnv
+
+view_new_x = [(0, 1), (-1, 1), (0, -1), (-1, 1)]
+view_new_y = [(-1, 1), (0, 1), (-1, 1), (0, -1)]
 
 class SimpleEnv(MiniGridEnv):
     def __init__(
@@ -27,8 +30,13 @@ class SimpleEnv(MiniGridEnv):
         self.key_pos = None
         self.key_pos_two = None
         self.key_picked_up = False
+        self.size = size
+        self.steps = 0
+        self.grid_list = []
+        self.wall_list = []
         self.key_two_picked_up = False
         self.prev_pos = None
+        self.unlocked = False
         self.door_pos = None
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
@@ -75,11 +83,12 @@ class SimpleEnv(MiniGridEnv):
         self.key_pos = (key_x, get_the_y)
 
         self.key_pos_two = (key_x_two, key_y_two)
-
-
+   
         for i in range(0, height):
             if i == get_the_x:
                 continue
+
+            self.wall_list.append((key_y+max(key_x, key_x_two), i))
             self.grid.set(key_y+max(key_x, key_x_two), i, Wall())
 
         self.grid.set(key_y+max(key_x, key_x_two), get_the_x, Door(COLOR_NAMES[0], is_locked=True))
@@ -125,8 +134,77 @@ class SimpleEnv(MiniGridEnv):
         else:
             return 
         if self.key_picked_up:
+            self.unlocked = True
             obj = self.grid.get(self.door_pos[0], self.door_pos[1])
             obj.is_locked = False
+
+    def update_grid(self, action):
+        curr_view = torch.zeros((7, 6))
+        curr_view[0][0] = self.agent_pos[0]
+        curr_view[0][1] = self.agent_pos[1]
+        curr_view[0][2] = self.direction
+        update_x = view_new_x[self.direction]
+        update_y = view_new_y[self.direction]
+        #print(self.direction)
+        
+        for j in range(6):
+            for k in range(6):
+                temp_update_x = self.agent_pos[0] + update_x[0]*int(k/2) + update_x[1]*k
+                temp_update_y = self.agent_pos[1] + update_y[0]*int(j/2) + update_y[1]*j
+                temp_pos = (temp_update_x, temp_update_y)
+
+
+                if temp_pos[0] <= 0 or temp_pos[0] >= self.size - 1:
+                    curr_view[j + 1][k] = -1
+                    #print(-1)
+                    continue 
+                if temp_pos[1] <= 0 or temp_pos[1] >= self.size - 1:
+                    curr_view[j + 1][k] = -1
+                    #print(-1)
+                    continue 
+
+                if temp_pos in self.wall_list:
+                    #print("asdfasdfasdf")
+                    curr_view[j + 1][k] = 1
+                    #print(1)
+                    continue
+
+                # print(temp_pos)
+                # print(self.key_pos)
+                if temp_pos[0] == self.key_pos[0] and temp_pos[1] == self.key_pos[1] and self.key_picked_up == False:
+                    print("asdpfhawepifhapwiehoaiwehfioawehf")
+                    curr_view[j + 1][k] = 2
+                    #print(2)
+                    continue 
+
+                if temp_pos[0] == self.key_pos_two[0] and temp_pos[1] == self.key_pos_two[1] and self.key_two_picked_up == False:
+                    curr_view[j + 1][k] = 2
+
+                if temp_pos[0] == self.width - 2 and temp_pos[1] == self.height - 2:
+                    print("asdlfhasoidfhaioshfoidhs THIS IS 3")
+                    curr_view[j + 1][k] = 3
+                    #print(3)
+                    continue 
+
+                if temp_pos[0] == self.door_pos[0] and temp_pos[1] == self.door_pos[1] and self.unlocked == False:
+                    curr_view[j + 1][k] = 4
+                    #print(4)
+                    continue 
+
+                curr_view[j + 1][k] = 0
+
+        if action == self.actions.forward:
+            temp_action = 1
+        elif action == self.actions.right:
+            temp_action = 2
+        else:
+            temp_action = 3
+
+        #print(curr_view)
+        self.grid_list.append({curr_view, temp_action})
+        #print(self.wall_list)
+        return
+
 
     def grabbed_key(self, pos):
         if self.key_picked_up == True:
@@ -148,10 +226,26 @@ class SimpleEnv(MiniGridEnv):
 
         if self.key_two_picked_up:
             obj = self.grid.get(self.door_pos[0], self.door_pos[1])
+            self.unlocked = True
             obj.is_locked = False
 
     def step(self, action):
+        self.update_grid(action)
+        self.steps += 1
+        if self.steps >= 50:
+            self.grid_list.append(torch.ones((10, 9))*-10)
+            with open("trajectory_9.pkl", 'wb') as f:
+                pickle.dump(self.grid_list, f)
+            
+            self.reset()
+
         temp = super().step(action)
+
+        if self.agent_pos[0] == self.width - 2 and self.agent_pos[1] == self.height - 2:
+            self.grid_list.append(torch.ones((10, 9))*10)
+            with open("trajectory_7.pkl", 'wb') as f:
+                pickle.dump(self.grid_list, f)
+        #temp = super().step(action)
         if action == self.actions.left:
             self.direction -= 1
         elif action == self.actions.right:
